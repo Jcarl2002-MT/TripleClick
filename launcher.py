@@ -108,7 +108,7 @@ THEMES = {
                   accent_hover="#245ad0", folder="#e0a82e"),
 }
 FONT = "Segoe UI" if IS_WIN else "Helvetica Neue" if IS_MAC else "DejaVu Sans"
-WIDTH = 300            # popup width in pixels
+WIDTH = 320            # popup width in pixels
 MAX_LIST_HEIGHT = 340  # the list scrolls beyond this
 
 
@@ -346,8 +346,9 @@ class App:
             y = max(0, sh - h - 48)  # stay above the taskbar
         p.geometry(f"+{x}+{y}")
 
-    def row(self, parent, icon, text, command, sub=None, arrow=False, icon_color=None, more=None):
-        """A clickable menu row. `more` adds a ⋯ button on the right. Returns the text label."""
+    def row(self, parent, icon, text, command, sub=None, arrow=False, icon_color=None, button=None, more=None):
+        """A clickable menu row. `button` = (text, command) adds a small button on the right and
+        `more` adds a ⋯ after it. Returns (text label, button)."""
         t = self.t
         f = tk.Frame(parent, bg=t["bg"], cursor="hand2", padx=8, pady=4)
         f.pack(fill="x", padx=4)
@@ -358,11 +359,15 @@ class App:
         if more:
             dots = tk.Label(f, text="⋯", bg=t["bg"], fg=t["muted"], font=(FONT, 12, "bold"), padx=6)
             dots.pack(side="right")
+        btn = None
+        if button:
+            btn = tk.Label(f, text=button[0], bg=t["accent"], fg="#ffffff", font=(FONT, 9), padx=8)
+            btn.pack(side="right", padx=(6, 0))
         label = tk.Label(f, text=text, bg=t["bg"], fg=t["fg"], font=(FONT, 10), anchor="w")
         label.pack(fill="x", padx=(6, 0))
         if sub:
             tk.Label(f, text=sub, bg=t["bg"], fg=t["muted"], font=(FONT, 8), anchor="w").pack(fill="x", padx=(6, 0))
-        parts = [f, *f.winfo_children()]
+        parts = [w for w in (f, *f.winfo_children()) if w is not btn]
 
         def paint(color):
             for w in parts:
@@ -375,13 +380,38 @@ class App:
             dots.bind("<Button-1>", lambda e: more())
             dots.bind("<Enter>", lambda e: (paint(t["hover"]), dots.config(fg=t["fg"])))
             dots.bind("<Leave>", lambda e: (paint(t["bg"]), dots.config(fg=t["muted"])))
-        return label
+        if btn:
+            btn.bind("<Button-1>", lambda e: button[1]())
+            btn.bind("<Enter>", lambda e: (paint(t["hover"]), btn.config(bg=t["accent_hover"])))
+            btn.bind("<Leave>", lambda e: (paint(t["bg"]), btn.config(bg=t["accent"])))
+        return label, btn
 
     def prompt_row(self, folder, prompt, back, sub=None):
-        """Click copies the prompt; ⋯ opens its options."""
-        label = self.row(self.list, "📄", prompt["name"], lambda: self.copy(prompt["text"], label),
-                         sub=sub, more=lambda: self.show_options(folder, prompt, back))
-        return label
+        """Copy button (or clicking the row) copies the prompt; ⋯ leads to edit and delete.
+        Returns the copy action."""
+        def copy():
+            self.copy(prompt["text"], btn)
+        _, btn = self.row(self.list, "📄", prompt["name"], copy, sub=sub, button=("Copy", copy),
+                          more=lambda: self.show_options(folder, prompt, back))
+        return copy
+
+    def button(self, parent, text, command, primary=False):
+        t = self.t
+        bg = t["accent"] if primary else t["panel"]
+        b = tk.Label(parent, text=text, bg=bg, fg="#ffffff" if primary else t["fg"],
+                     font=(FONT, 10), padx=10, pady=5, cursor="hand2")
+        b.bind("<Button-1>", lambda e: command())
+        b.bind("<Enter>", lambda e: b.config(bg=t["accent_hover"] if primary else t["hover"]))
+        b.bind("<Leave>", lambda e: b.config(bg=bg))
+        return b
+
+    def link(self, parent, text, command):
+        t = self.t
+        lk = tk.Label(parent, text=text, bg=t["bg"], fg=t["muted"], font=(FONT, 9), cursor="hand2", pady=2)
+        lk.bind("<Button-1>", lambda e: command())
+        lk.bind("<Enter>", lambda e: lk.config(fg=t["fg"]))
+        lk.bind("<Leave>", lambda e: lk.config(fg=t["muted"]))
+        return lk
 
     def separator(self, parent):
         tk.Frame(parent, bg=self.t["border"], height=1).pack(fill="x", padx=8, pady=4)
@@ -429,9 +459,9 @@ class App:
     def show_results(self, query):
         self.clear()
         results = search(self.prompts, query)
-        labels = [self.prompt_row(f, p, back=lambda: self.show_results(query), sub=f) for f, p in results]
+        copies = [self.prompt_row(f, p, back=lambda: self.show_results(query), sub=f) for f, p in results]
         if results:  # Enter copies the top result
-            self.enter_action = lambda: self.copy(results[0][1]["text"], labels[0])
+            self.enter_action = copies[0]
         else:
             self.note("No prompts found")
         self.fit()
@@ -447,15 +477,24 @@ class App:
         tk.Label(self.list, text=text[:400] + ("…" if len(text) > 400 else ""), bg=t["bg"], fg=t["muted"],
                  font=(FONT, 9), anchor="w", justify="left",
                  wraplength=WIDTH - 28).pack(fill="x", padx=14, pady=(0, 4))
+        buttons = tk.Frame(self.footer, bg=t["bg"])
+        buttons.pack(fill="x", padx=12, pady=(6, 2))
+        buttons.columnconfigure((0, 1), weight=1, uniform="b")
+        copy = self.button(buttons, "Copy", lambda: self.copy(prompt["text"], copy), primary=True)
+        copy.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+        self.button(buttons, "Paste Now", lambda: self.paste(prompt["text"]), primary=True).grid(
+            row=0, column=1, sticky="ew", padx=(4, 0))
         self.separator(self.footer)
-        copy = self.row(self.footer, "⧉", "Copy", lambda: self.copy(prompt["text"], copy))
-        self.row(self.footer, "↵", "Paste Now", lambda: self.paste(prompt["text"]))
-        self.row(self.footer, "✎", "Edit", lambda: self.open_manager(lambda m: m.refresh((folder, prompt))))
-        delete = self.row(self.footer, "🗑", "Delete", lambda: confirm_delete())
+        links = tk.Frame(self.footer, bg=t["bg"])
+        links.pack(fill="x", padx=14)
+        self.link(links, "✎  Edit", lambda: self.open_manager(lambda m: m.refresh((folder, prompt)))).pack(side="left")
+        delete = self.link(links, "🗑  Delete", lambda: confirm_delete())
+        delete.pack(side="right")
 
         def confirm_delete():
-            if delete.cget("text") == "Delete":  # first click asks, second click deletes
+            if delete.cget("text") == "🗑  Delete":  # first click asks, second click deletes
                 delete.config(text="Click again to delete", fg="#e5534b")
+                delete.bind("<Leave>", lambda e: None)
             else:
                 self.delete_prompt(folder, prompt)
                 back()
@@ -474,7 +513,7 @@ class App:
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
         if label:
-            label.config(text="✓ Copied to clipboard")
+            label.config(text="✓ Copied")
             self.hide_soon()
 
     def paste(self, text):
