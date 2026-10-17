@@ -171,6 +171,9 @@ class App:
         self.popup = self.manager = None
         self.target_window = None  # the window you were in, so Paste Now can go back to it
         self.anchor = (0, 0)
+        self.pos = None
+        self.drag_offset = (0, 0)
+        self.inside_click = 0.0  # when the popup last got a click
         self.enter_action = None
         self.events = queue.Queue()  # mouse thread -> Tk thread
         self.right_clicks = []
@@ -213,7 +216,8 @@ class App:
                 self.hide()
                 self.kb.tap(keyboard.Key.esc)  # close the context menu the right-clicks opened
                 self.root.after(80, self.open_popup)
-            elif self.popup and not self.contains(self.popup, x, y):
+            elif (self.popup and not self.contains(self.popup, x, y)
+                  and time.monotonic() - self.inside_click > 0.5):  # popup may have resized under the click
                 self.hide()  # clicked somewhere else
         self.root.after(30, self.poll)
 
@@ -227,6 +231,7 @@ class App:
     def open_popup(self):
         self.target_window = focused_window()
         self.anchor = self.root.winfo_pointerxy()
+        self.pos = None  # set on first render, then by dragging
         self.show_popup()
 
     def show_popup(self):
@@ -238,9 +243,16 @@ class App:
         frame = tk.Frame(p, bg=t["bg"])
         frame.pack(fill="both", expand=True, padx=1, pady=1)  # 1px border
 
-        bar = tk.Frame(frame, bg=t["bg"])
-        bar.pack(fill="x", padx=8, pady=(8, 4))
-        box = tk.Frame(bar, bg=t["field"], highlightthickness=1,
+        grip = tk.Frame(frame, bg=t["bg"], height=12, cursor="fleur")
+        grip.pack(fill="x")
+        handle = tk.Frame(grip, bg=t["border"], width=36, height=4, cursor="fleur")
+        handle.place(relx=0.5, rely=0.6, anchor="center")
+        bar = tk.Frame(frame, bg=t["bg"], cursor="fleur")
+        bar.pack(fill="x", padx=8, pady=(0, 4))
+        for w in (grip, handle, bar):  # drag the popup by its top edge
+            w.bind("<ButtonPress-1>", self.start_drag)
+            w.bind("<B1-Motion>", self.drag)
+        box = tk.Frame(bar, bg=t["field"], highlightthickness=1, cursor="xterm",
                        highlightbackground=t["border"], highlightcolor=t["accent"])
         box.pack(side="left", fill="x", expand=True)
         tk.Label(box, text="🔍", bg=t["field"], fg=t["muted"], font=(FONT, 9)).pack(side="left", padx=(6, 0))
@@ -268,6 +280,7 @@ class App:
         self.query.trace_add("write", lambda *_: self.on_search())
         self.entry.bind("<Return>", lambda e: self.enter_action and self.enter_action())
         p.bind("<Escape>", lambda e: self.hide())
+        p.bind("<ButtonPress>", lambda e: setattr(self, "inside_click", time.monotonic()))
         p.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"))
         p.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
         p.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
@@ -280,10 +293,22 @@ class App:
             focus_window(int(p.wm_frame(), 16))
         self.entry.focus_force()
 
+    def start_drag(self, e):
+        self.drag_offset = (e.x_root - self.popup.winfo_rootx(), e.y_root - self.popup.winfo_rooty())
+
+    def drag(self, e):
+        self.pos = (e.x_root - self.drag_offset[0], e.y_root - self.drag_offset[1])
+        self.popup.geometry("+%d+%d" % self.pos)
+
     def hide(self):
         if self.popup:
             self.popup.destroy()
             self.popup = None
+
+    def hide_soon(self):
+        """Close the popup shortly, unless it has been replaced by a new one by then."""
+        popup = self.popup
+        self.root.after(450, lambda: self.popup is popup and self.hide())
 
     def toggle_theme(self):
         self.settings["theme"] = "light" if self.settings["theme"] == "dark" else "dark"
@@ -302,30 +327,39 @@ class App:
         self.enter_action = None
 
     def fit(self):
-        """Size the list (scrolling if long) and keep the popup on screen beside the cursor."""
+        """Size the list (scrolling if long) and keep the popup on screen."""
         self.list.update_idletasks()
         h = self.list.winfo_reqheight()
         self.canvas.config(height=min(h, MAX_LIST_HEIGHT), scrollregion=(0, 0, WIDTH, h))
         self.canvas.yview_moveto(0)
         p = self.popup
         p.update_idletasks()
-        x, y = self.anchor[0] + 2, self.anchor[1] + 2
         w, h = p.winfo_reqwidth(), p.winfo_reqheight()
         sw, sh = p.winfo_screenwidth(), p.winfo_screenheight()
-        if x < sw < x + w:
-            x -= w + 4
+        if self.pos is None:  # first time: beside the cursor, flipped left if it would run off screen
+            x, y = self.anchor[0] + 2, self.anchor[1] + 2
+            if x < sw < x + w:
+                x -= w + 4
+            self.pos = (x, y)
+        x, y = self.pos
         if y < sh < y + h:
             y = max(0, sh - h - 48)  # stay above the taskbar
         p.geometry(f"+{x}+{y}")
 
-    def row(self, parent, icon, text, command, sub=None, arrow=False, icon_color=None):
+    def row(self, parent, icon, text, command, sub=None, arrow=False, icon_color=None, more=None):
+        """A clickable menu row. `more` adds a ⋯ button on the right. Returns the text label."""
         t = self.t
         f = tk.Frame(parent, bg=t["bg"], cursor="hand2", padx=8, pady=4)
         f.pack(fill="x", padx=4)
         tk.Label(f, text=icon, bg=t["bg"], fg=icon_color or t["muted"], font=(FONT, 11), width=2).pack(side="left")
         if arrow:
             tk.Label(f, text="›", bg=t["bg"], fg=t["muted"], font=(FONT, 11)).pack(side="right")
-        tk.Label(f, text=text, bg=t["bg"], fg=t["fg"], font=(FONT, 10), anchor="w").pack(fill="x", padx=(6, 0))
+        dots = None
+        if more:
+            dots = tk.Label(f, text="⋯", bg=t["bg"], fg=t["muted"], font=(FONT, 12, "bold"), padx=6)
+            dots.pack(side="right")
+        label = tk.Label(f, text=text, bg=t["bg"], fg=t["fg"], font=(FONT, 10), anchor="w")
+        label.pack(fill="x", padx=(6, 0))
         if sub:
             tk.Label(f, text=sub, bg=t["bg"], fg=t["muted"], font=(FONT, 8), anchor="w").pack(fill="x", padx=(6, 0))
         parts = [f, *f.winfo_children()]
@@ -337,16 +371,17 @@ class App:
             w.bind("<Enter>", lambda e: paint(t["hover"]))
             w.bind("<Leave>", lambda e: paint(t["bg"]))
             w.bind("<Button-1>", lambda e: command())
+        if dots:
+            dots.bind("<Button-1>", lambda e: more())
+            dots.bind("<Enter>", lambda e: (paint(t["hover"]), dots.config(fg=t["fg"])))
+            dots.bind("<Leave>", lambda e: (paint(t["bg"]), dots.config(fg=t["muted"])))
+        return label
 
-    def button(self, parent, text, command, primary=False):
-        t = self.t
-        bg = t["accent"] if primary else t["panel"]
-        b = tk.Label(parent, text=text, bg=bg, fg="#ffffff" if primary else t["fg"],
-                     font=(FONT, 10), padx=10, pady=5, cursor="hand2")
-        b.bind("<Button-1>", lambda e: command())
-        b.bind("<Enter>", lambda e: b.config(bg=t["accent_hover"] if primary else t["hover"]))
-        b.bind("<Leave>", lambda e: b.config(bg=bg))
-        return b
+    def prompt_row(self, folder, prompt, back, sub=None):
+        """Click copies the prompt; ⋯ opens its options."""
+        label = self.row(self.list, "📄", prompt["name"], lambda: self.copy(prompt["text"], label),
+                         sub=sub, more=lambda: self.show_options(folder, prompt, back))
+        return label
 
     def separator(self, parent):
         tk.Frame(parent, bg=self.t["border"], height=1).pack(fill="x", padx=8, pady=4)
@@ -375,8 +410,7 @@ class App:
         self.row(self.head, "←", folder, self.show_home)
         self.separator(self.head)
         for p in self.prompts.get(folder, []):
-            self.row(self.list, "📄", p["name"],
-                     lambda p=p: self.show_prompt(folder, p, back=lambda: self.show_folder(folder)))
+            self.prompt_row(folder, p, back=lambda: self.show_folder(folder))
         if not self.prompts.get(folder):
             self.note("No prompts in this folder yet")
         self.separator(self.footer)
@@ -395,18 +429,14 @@ class App:
     def show_results(self, query):
         self.clear()
         results = search(self.prompts, query)
-        for folder, p in results:
-            self.row(self.list, "📄", p["name"],
-                     lambda f=folder, p=p: self.show_prompt(f, p, back=lambda: self.show_results(query)),
-                     sub=folder)
-        if results:  # Enter opens the top result
-            folder, p = results[0]
-            self.enter_action = lambda: self.show_prompt(folder, p, back=lambda: self.show_results(query))
+        labels = [self.prompt_row(f, p, back=lambda: self.show_results(query), sub=f) for f, p in results]
+        if results:  # Enter copies the top result
+            self.enter_action = lambda: self.copy(results[0][1]["text"], labels[0])
         else:
             self.note("No prompts found")
         self.fit()
 
-    def show_prompt(self, folder, prompt, back):
+    def show_options(self, folder, prompt, back):
         t = self.t
         self.clear()
         self.row(self.head, "←", folder, back)
@@ -414,29 +444,38 @@ class App:
         tk.Label(self.list, text=prompt["name"], bg=t["bg"], fg=t["fg"], font=(FONT, 11, "bold"),
                  anchor="w", justify="left", wraplength=WIDTH - 28).pack(fill="x", padx=14, pady=(2, 4))
         text = prompt["text"].strip() or "(empty prompt)"
-        tk.Label(self.list, text=text[:600] + ("…" if len(text) > 600 else ""), bg=t["bg"], fg=t["muted"],
+        tk.Label(self.list, text=text[:400] + ("…" if len(text) > 400 else ""), bg=t["bg"], fg=t["muted"],
                  font=(FONT, 9), anchor="w", justify="left",
-                 wraplength=WIDTH - 28).pack(fill="x", padx=14, pady=(0, 8))
-        buttons = tk.Frame(self.footer, bg=t["bg"])
-        buttons.pack(fill="x", padx=12, pady=(4, 2))
-        buttons.columnconfigure((0, 1), weight=1, uniform="b")
-        copy = self.button(buttons, "Copy", lambda: self.copy(prompt["text"], copy), primary=True)
-        copy.grid(row=0, column=0, sticky="ew", padx=(0, 4))
-        self.button(buttons, "Paste Now", lambda: self.paste(prompt["text"]), primary=True).grid(
-            row=0, column=1, sticky="ew", padx=(4, 0))
-        self.button(buttons, "Edit Prompt", lambda: self.open_manager(lambda m: m.refresh((folder, prompt)))).grid(
-            row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        self.enter_action = lambda: self.paste(prompt["text"])  # Enter pastes
+                 wraplength=WIDTH - 28).pack(fill="x", padx=14, pady=(0, 4))
+        self.separator(self.footer)
+        copy = self.row(self.footer, "⧉", "Copy", lambda: self.copy(prompt["text"], copy))
+        self.row(self.footer, "↵", "Paste Now", lambda: self.paste(prompt["text"]))
+        self.row(self.footer, "✎", "Edit", lambda: self.open_manager(lambda m: m.refresh((folder, prompt))))
+        delete = self.row(self.footer, "🗑", "Delete", lambda: confirm_delete())
+
+        def confirm_delete():
+            if delete.cget("text") == "Delete":  # first click asks, second click deletes
+                delete.config(text="Click again to delete", fg="#e5534b")
+            else:
+                self.delete_prompt(folder, prompt)
+                back()
         self.fit()
+
+    def delete_prompt(self, folder, prompt):
+        items = self.prompts[folder]
+        items.pop(index_of(items, prompt))
+        self.save_prompts()
+        if self.manager:
+            self.manager.refresh()
 
     # ----- clipboard / paste -----
 
-    def copy(self, text, button=None):
+    def copy(self, text, label=None):
         self.root.clipboard_clear()
         self.root.clipboard_append(text)
-        if button:
-            button.config(text="Copied ✓")
-            self.root.after(500, self.hide)
+        if label:
+            label.config(text="✓ Copied to clipboard")
+            self.hide_soon()
 
     def paste(self, text):
         self.copy(text)

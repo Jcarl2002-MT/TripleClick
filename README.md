@@ -21,14 +21,15 @@ The first run creates `prompts.json` (with a few example prompts) and `settings.
 | Do this | What happens |
 | --- | --- |
 | Right-click 3× within a second | Popup opens beside the cursor |
-| Click a folder → click a prompt | Shows the prompt with **Copy** and **Paste Now** |
-| Just start typing | Searches every prompt's name and text |
-| `Enter` | Opens the top search result; `Enter` again pastes it |
+| Click a folder, then click a prompt | Copies the prompt to your clipboard and closes the popup |
+| Click **⋯** next to a prompt | Shows the prompt's text with **Copy**, **Paste Now**, **Edit** and **Delete** |
+| Drag the top edge (the little bar) | Moves the popup |
+| Just start typing | Searches every prompt's name and text; `Enter` copies the top result |
 | `Esc` or click elsewhere | Closes the popup |
 | ☀ / ☾ | Switches between dark and light mode |
 
-- **Copy** puts the whole prompt on your clipboard.
-- **Paste Now** copies it, switches back to the window you were in, and presses Ctrl+V for you.
+- **Paste Now** copies the prompt, switches back to the window you were in, and presses Ctrl+V for you.
+- **Delete** asks you to click a second time to confirm.
 - **Manage Prompts** opens the full organizer: add, rename, duplicate and delete folders and prompts, edit
   prompt text, and drag prompts between folders (drag a folder onto another to reorder). Changes save
   automatically. **Quit Launcher** is at the bottom right of this window.
