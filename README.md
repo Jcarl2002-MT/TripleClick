@@ -23,10 +23,11 @@ The first run creates `prompts.json` (with a few example prompts) and `settings.
 | Right-click 3× within a second | Popup opens beside the cursor |
 | Click a folder, then **Copy** next to a prompt | Copies it to your clipboard and closes the popup (clicking the name works too) |
 | Click **⋯** next to a prompt | Shows the prompt's text with **Copy** and **Paste Now**, plus small **Edit** and **Delete** links |
-| Drag the top edge (the little bar) | Moves the popup |
+| Drag the top edge (the title or the **Find:** bar) | Moves the popup |
 | Just start typing | Searches every prompt's name and text; `Enter` copies the top result |
+| `F2` / `F4` | Add a new prompt / open Manage Prompts |
 | `Esc` or click elsewhere | Closes the popup |
-| ☀ / ☾ | Switches between dark and light mode |
+| `F10` | Switches between the blue DOS look and the grey one |
 
 - **Paste Now** copies the prompt, switches back to the window you were in, and presses Ctrl+V for you.
 - **Delete** asks you to click a second time to confirm.
@@ -64,7 +65,7 @@ are kept next to it. To start it with Windows, press `Win+R`, type `shell:startu
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `theme` | `"dark"` | `"dark"` or `"light"` |
+| `theme` | `"dark"` | `"dark"` (blue DOS panel) or `"light"` (grey) |
 | `click_window` | `1.0` | Seconds allowed for the three right-clicks |
 | `paste_delay` | `0.15` | Seconds to wait for your app to regain focus before pasting. Raise it if Paste Now misses. |
 

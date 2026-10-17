@@ -101,15 +101,16 @@ DEFAULT_PROMPTS = {
     "Personal": [],
 }
 
+# DOS-commander look: "dark" is the classic blue panel, "light" the grey Turbo Vision dialog
 THEMES = {
-    "dark": dict(bg="#1e2430", panel="#2a3140", field="#151a23", hover="#2f3a4d", select="#34518a",
-                 fg="#e6e9ef", muted="#8a93a3", border="#3a4252", accent="#2f6fed",
-                 accent_hover="#4a82f0", folder="#f2c14e"),
-    "light": dict(bg="#ffffff", panel="#eef0f4", field="#f6f7f9", hover="#e8eefc", select="#d4e1fb",
-                  fg="#1d2330", muted="#6b7280", border="#d5d9e0", accent="#2f6fed",
-                  accent_hover="#245ad0", folder="#e0a82e"),
+    "dark": dict(bg="#0000aa", panel="#aaaaaa", field="#000000", hover="#00aaaa", hover_fg="#000000",
+                 select="#00aaaa", fg="#ffffff", muted="#55ffff", hot="#ffff55", border="#aaaaaa",
+                 accent="#aaaaaa", accent_hover="#ffffff", accent_fg="#000000", danger="#ff5555"),
+    "light": dict(bg="#aaaaaa", panel="#ffffff", field="#ffffff", hover="#00aa00", hover_fg="#000000",
+                  select="#00aa00", fg="#000000", muted="#00007a", hot="#aa0000", border="#000000",
+                  accent="#00aa00", accent_hover="#55ff55", accent_fg="#000000", danger="#aa0000"),
 }
-FONT = "Segoe UI" if IS_WIN else "Helvetica Neue" if IS_MAC else "DejaVu Sans"
+FONT = "Consolas" if IS_WIN else "Menlo" if IS_MAC else "DejaVu Sans Mono"
 WIDTH = 320            # popup width in pixels
 MAX_LIST_HEIGHT = 340  # the list scrolls beyond this
 
@@ -150,9 +151,9 @@ def style_ttk(root, t):
                 troughcolor=t["panel"], arrowcolor=t["fg"], font=(FONT, 10))
     row_height = int(tkfont.Font(root, font=(FONT, 10)).metrics("linespace") * 1.7)
     s.configure("Treeview", background=t["bg"], fieldbackground=t["bg"], rowheight=row_height)
-    s.map("Treeview", background=[("selected", t["select"])], foreground=[("selected", t["fg"])])
-    s.configure("TButton", background=t["panel"], padding=(10, 4))
-    s.map("TButton", background=[("active", t["hover"])])
+    s.map("Treeview", background=[("selected", t["select"])], foreground=[("selected", t["hover_fg"])])
+    s.configure("TButton", background=t["panel"], foreground=t["accent_fg"], padding=(10, 4))
+    s.map("TButton", background=[("active", t["hover"])], foreground=[("active", t["hover_fg"])])
     s.configure("Muted.TLabel", foreground=t["muted"])
     s.map("TCombobox", fieldbackground=[("readonly", t["field"])], foreground=[("readonly", t["fg"])],
           selectbackground=[("readonly", t["field"])], selectforeground=[("readonly", t["fg"])])
@@ -272,37 +273,45 @@ class App:
 
     def show_popup(self):
         t = self.t
-        p = self.popup = tk.Toplevel(self.root, bg=t["border"])
+        p = self.popup = tk.Toplevel(self.root, bg=t["bg"])
         p.withdraw()
         p.overrideredirect(True)
         p.attributes("-topmost", True)
-        frame = tk.Frame(p, bg=t["bg"])
-        frame.pack(fill="both", expand=True, padx=1, pady=1)  # 1px border
+        top = tk.Frame(p, bg=t["bg"], height=10, cursor="fleur")
+        top.pack(fill="x")
+        outer = tk.Frame(p, bg=t["border"])  # double-line border: line, gap, line
+        outer.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+        gap = tk.Frame(outer, bg=t["bg"])
+        gap.pack(fill="both", expand=True, padx=1, pady=1)
+        inner = tk.Frame(gap, bg=t["border"])
+        inner.pack(fill="both", expand=True, padx=2, pady=2)
+        frame = tk.Frame(inner, bg=t["bg"])
+        frame.pack(fill="both", expand=True, padx=1, pady=1)
+        title = tk.Label(p, text=" Prompts ", bg=t["bg"], fg=t["fg"], font=(FONT, 10, "bold"), cursor="fleur")
+        title.place(relx=0.5, y=12, anchor="center")  # sits on the top border line
 
-        grip = tk.Frame(frame, bg=t["bg"], height=12, cursor="fleur")
-        grip.pack(fill="x")
-        handle = tk.Frame(grip, bg=t["border"], width=36, height=4, cursor="fleur")
-        handle.place(relx=0.5, rely=0.6, anchor="center")
         bar = tk.Frame(frame, bg=t["bg"], cursor="fleur")
-        bar.pack(fill="x", padx=8, pady=(0, 4))
-        for w in (grip, handle, bar):  # drag the popup by its top edge
+        bar.pack(fill="x", padx=8, pady=(12, 6))
+        find = tk.Label(bar, text="Find:", bg=t["bg"], fg=t["hot"], font=(FONT, 10), cursor="fleur")
+        find.pack(side="left", padx=(0, 6))
+        for w in (top, title, bar, find):  # drag the popup by its top edge
             w.bind("<ButtonPress-1>", self.start_drag)
             w.bind("<B1-Motion>", self.drag)
-        box = tk.Frame(bar, bg=t["field"], highlightthickness=1, cursor="xterm",
-                       highlightbackground=t["border"], highlightcolor=t["accent"])
+        box = tk.Frame(bar, bg=t["field"], cursor="xterm")
         box.pack(side="left", fill="x", expand=True)
-        tk.Label(box, text="🔍", bg=t["field"], fg=t["muted"], font=(FONT, 9)).pack(side="left", padx=(6, 0))
         self.query = tk.StringVar()
         self.entry = tk.Entry(box, textvariable=self.query, bg=t["field"], fg=t["fg"], relief="flat",
                               insertbackground=t["fg"], highlightthickness=0, font=(FONT, 10))
-        self.entry.pack(side="left", fill="x", expand=True, padx=4, pady=4)
-        self.hint = tk.Label(box, text="Search prompts…", bg=t["field"], fg=t["muted"], font=(FONT, 10))
+        self.entry.pack(side="left", fill="x", expand=True, padx=6, pady=4)
+        self.hint = tk.Label(box, text="search prompts", bg=t["field"], fg=t["muted"], font=(FONT, 10))
         self.hint.place(in_=self.entry, x=0, rely=0.5, anchor="w")
         self.hint.bind("<Button-1>", lambda e: self.entry.focus_set())
-        theme = tk.Label(bar, text="☀" if self.settings["theme"] == "dark" else "☾", bg=t["bg"],
-                         fg=t["muted"], font=(FONT, 12), cursor="hand2", padx=6)
-        theme.pack(side="right")
+        theme = tk.Label(bar, text="F10", bg=t["accent"], fg=t["accent_fg"], font=(FONT, 9, "bold"),
+                         cursor="hand2", padx=6, pady=3)
+        theme.pack(side="right", padx=(6, 0))
         theme.bind("<Button-1>", lambda e: self.toggle_theme())
+        theme.bind("<Enter>", lambda e: theme.config(bg=t["accent_hover"]))
+        theme.bind("<Leave>", lambda e: theme.config(bg=t["accent"]))
 
         self.head = tk.Frame(frame, bg=t["bg"])
         self.head.pack(fill="x")
@@ -316,6 +325,9 @@ class App:
         self.query.trace_add("write", lambda *_: self.on_search())
         self.entry.bind("<Return>", lambda e: self.enter_action and self.enter_action())
         p.bind("<Escape>", lambda e: self.hide())
+        p.bind("<F2>", lambda e: self.open_manager(lambda m: m.add_prompt()))
+        p.bind("<F4>", lambda e: self.open_manager())
+        p.bind("<F10>", lambda e: self.toggle_theme())
         p.bind("<ButtonPress>", lambda e: setattr(self, "inside_click", time.monotonic()))
         p.bind("<MouseWheel>", lambda e: self.canvas.yview_scroll(-1 if e.delta > 0 else 1, "units"))
         p.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
@@ -382,44 +394,47 @@ class App:
             y = max(0, sh - h - 48)  # stay above the taskbar
         p.geometry(f"+{x}+{y}")
 
-    def row(self, parent, icon, text, command, sub=None, arrow=False, icon_color=None, button=None, more=None):
-        """A clickable menu row. `button` = (text, command) adds a small button on the right and
-        `more` adds a ⋯ after it. Returns (text label, button)."""
+    def row(self, parent, icon, text, command, sub=None, key=None, button=None, more=None):
+        """A clickable menu row; hovering shows the highlight bar. `key` is a hint on the right (a shortcut,
+        or <DIR>), `button` = (text, command) adds a small button on the right and `more` adds a ⋯ after it.
+        Returns (text label, button)."""
         t = self.t
-        f = tk.Frame(parent, bg=t["bg"], cursor="hand2", padx=8, pady=4)
-        f.pack(fill="x", padx=4)
-        tk.Label(f, text=icon, bg=t["bg"], fg=icon_color or t["muted"], font=(FONT, 11), width=2).pack(side="left")
-        if arrow:
-            tk.Label(f, text="›", bg=t["bg"], fg=t["muted"], font=(FONT, 11)).pack(side="right")
+        f = tk.Frame(parent, bg=t["bg"], cursor="hand2", padx=8, pady=3)
+        f.pack(fill="x", padx=6)
+        if icon:
+            tk.Label(f, text=icon, bg=t["bg"], fg=t["fg"], font=(FONT, 10)).pack(side="left", padx=(0, 6))
+        if key:
+            tk.Label(f, text=key, bg=t["bg"], fg=t["muted"], font=(FONT, 10)).pack(side="right")
         dots = None
         if more:
-            dots = tk.Label(f, text="⋯", bg=t["bg"], fg=t["muted"], font=(FONT, 12, "bold"), padx=6)
+            dots = tk.Label(f, text="⋯", bg=t["bg"], fg=t["muted"], font=(FONT, 11, "bold"), padx=6)
             dots.pack(side="right")
         btn = None
         if button:
-            btn = tk.Label(f, text=button[0], bg=t["accent"], fg="#ffffff", font=(FONT, 9), padx=8)
+            btn = tk.Label(f, text=button[0], bg=t["accent"], fg=t["accent_fg"], font=(FONT, 9), padx=6)
             btn.pack(side="right", padx=(6, 0))
         label = tk.Label(f, text=text, bg=t["bg"], fg=t["fg"], font=(FONT, 10), anchor="w")
-        label.pack(fill="x", padx=(6, 0))
+        label.pack(fill="x")
         if sub:
-            tk.Label(f, text=sub, bg=t["bg"], fg=t["muted"], font=(FONT, 8), anchor="w").pack(fill="x", padx=(6, 0))
+            tk.Label(f, text=sub, bg=t["bg"], fg=t["muted"], font=(FONT, 8), anchor="w").pack(fill="x")
         parts = [w for w in (f, *f.winfo_children()) if w is not btn]
+        colors = {w: w.cget("fg") for w in parts if w is not f}
 
-        def paint(color):
+        def paint(on):
             for w in parts:
-                w.config(bg=color)
+                w.config(bg=t["hover"] if on else t["bg"])
+            for w, fg in colors.items():
+                w.config(fg=t["hover_fg"] if on else fg)
         for w in parts:
-            w.bind("<Enter>", lambda e: paint(t["hover"]))
-            w.bind("<Leave>", lambda e: paint(t["bg"]))
+            w.bind("<Enter>", lambda e: paint(True))
+            w.bind("<Leave>", lambda e: paint(False))
             w.bind("<Button-1>", lambda e: command())
         if dots:
             dots.bind("<Button-1>", lambda e: more())
-            dots.bind("<Enter>", lambda e: (paint(t["hover"]), dots.config(fg=t["fg"])))
-            dots.bind("<Leave>", lambda e: (paint(t["bg"]), dots.config(fg=t["muted"])))
         if btn:
             btn.bind("<Button-1>", lambda e: button[1]())
-            btn.bind("<Enter>", lambda e: (paint(t["hover"]), btn.config(bg=t["accent_hover"])))
-            btn.bind("<Leave>", lambda e: (paint(t["bg"]), btn.config(bg=t["accent"])))
+            btn.bind("<Enter>", lambda e: (paint(True), btn.config(bg=t["accent_hover"])))
+            btn.bind("<Leave>", lambda e: (paint(False), btn.config(bg=t["accent"])))
         return label, btn
 
     def prompt_row(self, folder, prompt, back, sub=None):
@@ -427,15 +442,14 @@ class App:
         Returns the copy action."""
         def copy():
             self.copy(prompt["text"], btn)
-        _, btn = self.row(self.list, "📄", prompt["name"], copy, sub=sub, button=("Copy", copy),
+        _, btn = self.row(self.list, "·", prompt["name"], copy, sub=sub, button=("Copy", copy),
                           more=lambda: self.show_options(folder, prompt, back))
         return copy
 
     def button(self, parent, text, command, primary=False):
         t = self.t
         bg = t["accent"] if primary else t["panel"]
-        b = tk.Label(parent, text=text, bg=bg, fg="#ffffff" if primary else t["fg"],
-                     font=(FONT, 10), padx=10, pady=5, cursor="hand2")
+        b = tk.Label(parent, text=text, bg=bg, fg=t["accent_fg"], font=(FONT, 10), padx=10, pady=5, cursor="hand2")
         b.bind("<Button-1>", lambda e: command())
         b.bind("<Enter>", lambda e: b.config(bg=t["accent_hover"] if primary else t["hover"]))
         b.bind("<Leave>", lambda e: b.config(bg=bg))
@@ -450,7 +464,7 @@ class App:
         return lk
 
     def separator(self, parent):
-        tk.Frame(parent, bg=self.t["border"], height=1).pack(fill="x", padx=8, pady=4)
+        tk.Frame(parent, bg=self.t["border"], height=1).pack(fill="x", pady=4)  # runs into the border
 
     def note(self, text):
         tk.Label(self.list, text=text, bg=self.t["bg"], fg=self.t["muted"],
@@ -461,26 +475,25 @@ class App:
     def show_home(self):
         self.clear()
         for folder in self.prompts:
-            self.row(self.list, "📁", folder, lambda f=folder: self.show_folder(f),
-                     arrow=True, icon_color=self.t["folder"])
+            self.row(self.list, "▸", folder, lambda f=folder: self.show_folder(f), key="<DIR>")
         if not self.prompts:
             self.note("No folders yet")
         self.separator(self.footer)
-        self.row(self.footer, "＋", "Add New Prompt", lambda: self.open_manager(lambda m: m.add_prompt()))
-        self.row(self.footer, "⚙", "Manage Prompts", self.open_manager)
-        self.row(self.footer, "✕", "Close", self.hide)
+        self.row(self.footer, None, "Add new prompt", lambda: self.open_manager(lambda m: m.add_prompt()), key="F2")
+        self.row(self.footer, None, "Manage prompts", self.open_manager, key="F4")
+        self.row(self.footer, None, "Close", self.hide, key="Esc")
         self.fit()
 
     def show_folder(self, folder):
         self.clear()
-        self.row(self.head, "←", folder, self.show_home)
+        self.row(self.head, "◂", folder, self.show_home, key="..")
         self.separator(self.head)
         for p in self.prompts.get(folder, []):
             self.prompt_row(folder, p, back=lambda: self.show_folder(folder))
         if not self.prompts.get(folder):
             self.note("No prompts in this folder yet")
         self.separator(self.footer)
-        self.row(self.footer, "＋", "Add Prompt to this Folder",
+        self.row(self.footer, "+", "Add prompt to this folder",
                  lambda: self.open_manager(lambda m: m.add_prompt(folder)))
         self.fit()
 
@@ -505,7 +518,7 @@ class App:
     def show_options(self, folder, prompt, back):
         t = self.t
         self.clear()
-        self.row(self.head, "←", folder, back)
+        self.row(self.head, "◂", folder, back, key="..")
         self.separator(self.head)
         tk.Label(self.list, text=prompt["name"], bg=t["bg"], fg=t["fg"], font=(FONT, 11, "bold"),
                  anchor="w", justify="left", wraplength=WIDTH - 28).pack(fill="x", padx=14, pady=(2, 4))
@@ -523,13 +536,13 @@ class App:
         self.separator(self.footer)
         links = tk.Frame(self.footer, bg=t["bg"])
         links.pack(fill="x", padx=14)
-        self.link(links, "✎  Edit", lambda: self.open_manager(lambda m: m.refresh((folder, prompt)))).pack(side="left")
-        delete = self.link(links, "🗑  Delete", lambda: confirm_delete())
+        self.link(links, "Edit", lambda: self.open_manager(lambda m: m.refresh((folder, prompt)))).pack(side="left")
+        delete = self.link(links, "Delete", lambda: confirm_delete())
         delete.pack(side="right")
 
         def confirm_delete():
-            if delete.cget("text") == "🗑  Delete":  # first click asks, second click deletes
-                delete.config(text="Click again to delete", fg="#e5534b")
+            if delete.cget("text") == "Delete":  # first click asks, second click deletes
+                delete.config(text="Click again to delete", fg=t["danger"])
                 delete.bind("<Leave>", lambda e: None)
             else:
                 self.delete_prompt(folder, prompt)
@@ -653,7 +666,7 @@ class Manager:
         t = self.app.t
         self.win.config(bg=t["bg"])
         self.text.config(bg=t["field"], fg=t["fg"], insertbackground=t["fg"], selectbackground=t["select"],
-                         selectforeground=t["fg"], highlightbackground=t["border"], highlightcolor=t["accent"])
+                         selectforeground=t["hover_fg"], highlightbackground=t["border"], highlightcolor=t["accent"])
 
     def close(self):
         self.flush()
