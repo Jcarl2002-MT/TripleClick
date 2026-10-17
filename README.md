@@ -33,6 +33,8 @@ The first run creates `prompts.json` (with a few example prompts) and `settings.
 - **Manage Prompts** opens the full organizer: add, rename, duplicate and delete folders and prompts, edit
   prompt text, and drag prompts between folders (drag a folder onto another to reorder). Changes save
   automatically. **Quit Launcher** is at the bottom right of this window.
+- **Check for Updates** (next to Quit Launcher) downloads the newest `launcher.py` from GitHub, replaces
+  yours and restarts the launcher. Your prompts and settings are not touched.
 
 ## Make a `launcher.exe` (Windows)
 

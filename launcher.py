@@ -6,10 +6,12 @@ Build:  pyinstaller --onefile --noconsole --name launcher launcher.py
 import json
 import os
 import queue
+import subprocess
 import sys
 import time
 import tkinter as tk
 import tkinter.font as tkfont
+import urllib.request
 from tkinter import messagebox, simpledialog, ttk
 
 from pynput import keyboard, mouse
@@ -39,8 +41,6 @@ if IS_WIN:
         user32.AttachThreadInput(me, fg_thread, False)
 
 elif IS_MAC:
-    import subprocess
-
     def focused_window():
         return None
 
@@ -65,6 +65,8 @@ else:  # Linux (X11). Tk won't give keyboard focus to borderless windows, so ask
 APP_DIR = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
 PROMPTS_FILE = os.path.join(APP_DIR, "prompts.json")
 SETTINGS_FILE = os.path.join(APP_DIR, "settings.json")
+LAUNCHER_FILE = os.path.abspath(__file__)
+UPDATE_URL = "https://raw.githubusercontent.com/Jcarl2002-MT/TripleClick/main/launcher.py"
 
 DEFAULT_SETTINGS = {
     "theme": "dark",      # "dark" or "light"
@@ -192,6 +194,40 @@ class App:
         if self.manager:
             self.manager.flush()
         self.root.destroy()
+
+    def update(self, parent):
+        """Download the latest launcher.py from GitHub, replace this file, and restart."""
+        if getattr(sys, "frozen", False):
+            messagebox.showinfo("Update", "This is the .exe version. To update it, build a new "
+                                "launcher.exe from the latest launcher.py on GitHub.", parent=parent)
+            return
+        try:
+            with urllib.request.urlopen(UPDATE_URL, timeout=15) as response:
+                new = response.read()
+            compile(new, LAUNCHER_FILE, "exec")  # make sure it's real Python, not an error page
+            with open(LAUNCHER_FILE, "rb") as f:
+                current = f.read()
+        except Exception as e:
+            messagebox.showerror("Update", f"Couldn't check for updates:\n{e}", parent=parent)
+            return
+        if new.replace(b"\r\n", b"\n") == current.replace(b"\r\n", b"\n"):
+            messagebox.showinfo("Update", "You already have the latest version.", parent=parent)
+            return
+        if not messagebox.askyesno("Update", "A new version is available.\n\nInstall it and restart "
+                                   "the launcher? Your prompts are not affected.", parent=parent):
+            return
+        try:
+            tmp = LAUNCHER_FILE + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(new)
+            os.replace(tmp, LAUNCHER_FILE)
+        except OSError as e:
+            messagebox.showerror("Update", f"Couldn't install the update:\n{e}", parent=parent)
+            return
+        if self.manager:
+            self.manager.flush()
+        subprocess.Popen([sys.executable, LAUNCHER_FILE], cwd=APP_DIR)
+        self.quit()
 
     def save_prompts(self):
         save_json(PROMPTS_FILE, self.prompts)
@@ -596,9 +632,10 @@ class Manager:
         self.text.grid(row=5, column=0, sticky="nsew", pady=(2, 8))
         bottom = ttk.Frame(right)
         bottom.grid(row=6, column=0, sticky="ew")
-        ttk.Label(bottom, text="Changes save automatically · Drag prompts to move them",
-                  style="Muted.TLabel").pack(side="left")
         ttk.Button(bottom, text="Quit Launcher", command=app.quit).pack(side="right")
+        ttk.Button(bottom, text="Check for Updates", command=lambda: app.update(self.win)).pack(side="right", padx=6)
+        ttk.Label(bottom, text="Changes save automatically",
+                  style="Muted.TLabel").pack(side="left")
 
         self.tree.bind("<<TreeviewSelect>>", self.on_select)
         self.tree.bind("<ButtonPress-1>", lambda e: setattr(self, "drag", self.tree.identify_row(e.y)))
