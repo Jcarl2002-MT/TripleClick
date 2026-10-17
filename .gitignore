@@ -1,0 +1,9 @@
+# your personal data, created on first run
+prompts.json
+settings.json
+*.tmp
+
+__pycache__/
+build/
+dist/
+*.spec
